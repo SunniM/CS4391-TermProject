@@ -49,7 +49,7 @@ def  siftExtract():
 def main():
     if not os.path.exists("new_data"):
         preprocess()
-        siftExtract()
+    siftExtract()
 
 
 
