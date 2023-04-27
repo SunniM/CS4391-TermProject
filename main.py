@@ -174,6 +174,8 @@ def main():
 
     print('KNN using pixel values:')
     printSummary(test_label, pred)
+
+    siftExtract()
     
     train, train_label, test, test_label = histExtract() 
     pred = nearestNeighbor(train, train_label, test)
@@ -182,16 +184,6 @@ def main():
 
     print('KNN using histogram features:')
     printSummary(test_label, pred)
-
-    siftExtract()
-
-
-
-
-
-
-
-
 
 if __name__ == "__main__":
     main()
