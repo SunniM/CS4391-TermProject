@@ -29,33 +29,6 @@ def preprocess():
     return
 
 
-def siftExtract():
-    fieldNames = ['Category', 'Keypoints', 'descriptors']
-    with open('sift_Ft.csv', 'w', encoding='UTF8', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldNames)
-        writer.writeheader()
-
-    csvFile = open('sift_Ft.csv', 'w')
-    writer = csv.writer(csvFile, delimiter='-')
-
-    sift = cv.SIFT_create()
-    set_type2 = "train"
-    for set_type in ["large", "small"]:
-        set_path = os.path.join("new_data", set_type, set_type2)
-        for folderName in os.listdir(set_path):
-            folderPath = os.path.join(set_path, folderName)
-            for file in os.listdir(folderPath):
-                file_path = os.path.join(folderPath, file)
-                img = cv.imread(file_path)
-                if (img is None):
-                    print(f'Image: {file_path} Not Found')
-                    exit(0)
-                keypoints, descriptors = sift.detectAndCompute(img, None)
-                row = [f'{folderName}', keypoints, descriptors]
-                writer.writerow(row)
-
-    csvFile.close()
-
 
 def histExtract():
     
@@ -160,7 +133,124 @@ def printSummary(actual, pred):
     print(confusion)
     print()
 
+def  siftExtract():
+    desciptors = []
+    sift = cv.SIFT_create()
+    set_type1 = "train"
+    max_descriptor = 0
+    desciptors2 = []
+    set_type2 = "test"
 
+    for set_type in ["large"]:
+        set_path1 = os.path.join("ProcData", set_type, set_type2)
+        for folderName in os.listdir(set_path1):
+            folderPath = os.path.join(set_path1, folderName)
+            for file in os.listdir(folderPath):
+                file_path = os.path.join(folderPath, file)
+                img  = cv.imread(file_path)
+                keypoints, descriptor = sift.detectAndCompute(img, None)
+                if descriptor is not None:
+                    descriptor = np.array(descriptor)
+                    desciptors2.append((folderName, descriptor))
+                    max_descriptor = max(max_descriptor, descriptor.shape[0])
+    
+
+    for i in range(len(desciptors2)):
+        descriptor = desciptors2[i][1]
+        if descriptor.shape[0] < max_descriptor:
+            padded_descriptor = np.zeros((max_descriptor, descriptor.shape[1]))
+            padded_descriptor[:descriptor.shape[0], :] = descriptor
+            desciptors2[i] = (desciptors2[i][0], padded_descriptor)  
+          
+
+    with open('siftTest.pickle', 'wb') as f:
+        pickle.dump(desciptors2, f)
+
+
+
+    for set_type in ["large", "small"]:
+        set_path1 = os.path.join("ProcData", set_type, set_type1)
+        for folderName in os.listdir(set_path1):
+            folderPath = os.path.join(set_path1, folderName)
+            for file in os.listdir(folderPath):
+                file_path = os.path.join(folderPath, file)
+                img  = cv.imread(file_path)
+                keypoints, descriptor = sift.detectAndCompute(img, None)
+                if descriptor is not None:
+                    descriptor = np.array(descriptor)
+                    desciptors.append((folderName, descriptor))
+                    max_descriptor = max(max_descriptor, descriptor.shape[0])
+    
+    for i in range(len(desciptors)):
+        descriptor = desciptors[i][1]
+        if descriptor.shape[0] < max_descriptor:
+            padded_descriptor = np.zeros((max_descriptor, descriptor.shape[1]))
+            padded_descriptor[:descriptor.shape[0], :] = descriptor
+            desciptors[i] = (desciptors[i][0], padded_descriptor)
+    
+
+    with open('siftTrain.pickle', 'wb') as f:
+        pickle.dump(desciptors, f)
+
+
+#Takes in the confusion matrix and computes the percentages
+def printResults(pred, matrix):
+    false_positive_percent = (matrix[0,1] / (matrix[0,1] + matrix[1,1])) * 100
+    false_negative_percent = (matrix[1,0] / (matrix[1,1] + matrix[1,0])) * 100
+    score = ((matrix[0,0] + matrix[1,1])/np.sum(matrix))*100
+    print(f'Accuracy percent: {score}')
+    print(f'False Positive Percent: {false_positive_percent}')
+    print(f'False Negative Percent: {false_negative_percent}')
+
+
+def knnClass(trainFile, testFile):
+
+    with open(trainFile, 'rb') as f:
+        trainData = pickle.load(f)
+    
+    with open(testFile, 'rb') as f:
+        testData = pickle.load(f)
+
+
+    X_train = np.array([x[1] for x in trainData])
+    X_train = X_train.reshape(X_train.shape[0], -1)
+    y_train = np.array([x[0] for x in trainData])
+
+    X_test = np.array([x[1] for x in testData])
+    X_test = X_test.reshape(X_test.shape[0], -1)
+    y_test = np.array([x[0] for x in testData])
+
+    k = 3
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(X_train, y_train)
+    prediction = knn.predict(X_test)
+    #Gathering the accuracy, falspe positives and fals negative percentages.
+    cfMatrix = confusion_matrix(y_test, prediction)
+    #Send them off to print
+    printResults(prediction, cfMatrix)
+
+def smvClassifier(trainFile, testFile):
+    with open(trainFile, 'rb') as f:
+        trainData = pickle.load(f)
+    
+    with open(testFile, 'rb') as f:
+        testData = pickle.load(f)
+
+
+    X_train = np.array([x[1] for x in trainData])
+    X_train = X_train.reshape(X_train.shape[0], -1)
+    y_train = np.array([x[0] for x in trainData])
+
+    X_test = np.array([x[1] for x in testData])
+    X_test = X_test.reshape(X_test.shape[0], -1)
+    y_test = np.array([x[0] for x in testData])
+
+    smvC = svm.SVC(kernel='linear', C = 1, gamma= 'auto')
+    smvC.fit(X_train, y_train)
+    prediction = smvC.predict(X_test)
+    svmMatrix = confusion_matrix(y_test, prediction)
+    printResults(prediction, svmMatrix)
+    
 
 
 def main():
@@ -175,8 +265,6 @@ def main():
     print('KNN using pixel values:')
     printSummary(test_label, pred)
 
-    siftExtract()
-    
     train, train_label, test, test_label = histExtract() 
     pred = nearestNeighbor(train, train_label, test)
     pred = pred.reshape(pred.shape[0],)
@@ -184,6 +272,9 @@ def main():
 
     print('KNN using histogram features:')
     printSummary(test_label, pred)
+    siftExtract()
+    knnClass('siftTrain.pickle', 'siftTest.pickle')
+    smvClassifier('siftTrain.pickle', 'siftTest.pickle')
 
 if __name__ == "__main__":
     main()
