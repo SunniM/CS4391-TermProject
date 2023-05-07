@@ -3,6 +3,10 @@ import cv2 as cv
 import csv
 import numpy as np
 import pandas as pd
+import pickle
+from sklearn import svm
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import confusion_matrix, accuracy_score
 
 LABEL = {'bedroom': 0, 'coast': 1, 'forest': 2}
 SIZES = {"small": (50, 50), "large": (200, 200)}
@@ -117,32 +121,15 @@ def nearestNeighbor(train, train_label, test):
     _, results, _, _ = knn.findNearest(test, 3)
     return results
 
-def printSummary(actual, pred):
-    print()
-    confusion = np.zeros((3,3))
-    for i in range(len(actual)):
-        confusion[actual[i]][pred[i]] += 1
-    
-    acc = 0
-    for i in range(3):
-        acc += confusion[i][i]
-    acc = acc/len(actual)
-    print('accuracy: %.3f' % acc)
-    
-    confusion = pd.DataFrame(confusion, columns=list(LABEL.keys()), index=list(LABEL.keys()), dtype='int32')
-    print(confusion)
-    print()
 
 def  siftExtract():
     desciptors = []
     sift = cv.SIFT_create()
-    set_type1 = "train"
     max_descriptor = 0
     desciptors2 = []
-    set_type2 = "test"
 
     for set_type in ["large"]:
-        set_path1 = os.path.join("ProcData", set_type, set_type2)
+        set_path1 = os.path.join("new_data", set_type, 'test')
         for folderName in os.listdir(set_path1):
             folderPath = os.path.join(set_path1, folderName)
             for file in os.listdir(folderPath):
@@ -169,7 +156,7 @@ def  siftExtract():
 
 
     for set_type in ["large", "small"]:
-        set_path1 = os.path.join("ProcData", set_type, set_type1)
+        set_path1 = os.path.join("new_data", set_type, 'train')
         for folderName in os.listdir(set_path1):
             folderPath = os.path.join(set_path1, folderName)
             for file in os.listdir(folderPath):
@@ -194,13 +181,46 @@ def  siftExtract():
 
 
 #Takes in the confusion matrix and computes the percentages
-def printResults(pred, matrix):
-    false_positive_percent = (matrix[0,1] / (matrix[0,1] + matrix[1,1])) * 100
-    false_negative_percent = (matrix[1,0] / (matrix[1,1] + matrix[1,0])) * 100
-    score = ((matrix[0,0] + matrix[1,1])/np.sum(matrix))*100
-    print(f'Accuracy percent: {score}')
-    print(f'False Positive Percent: {false_positive_percent}')
-    print(f'False Negative Percent: {false_negative_percent}')
+def printSummary(actual, pred):
+    print()
+    confusion = np.zeros((3,3))
+    for i in range(len(actual)):
+        confusion[actual[i]][pred[i]] += 1
+    
+    acc = 0
+    for i in range(3):
+        acc += confusion[i][i]
+    acc = acc/len(actual)
+    print('accuracy: %.3f' % acc)
+    
+    confusion = pd.DataFrame(confusion, columns=list(LABEL.keys()), index=list(LABEL.keys()), dtype='int32')
+    print(confusion)
+    print()
+
+def printResults(y_act, y_pred):
+
+    matrix = confusion_matrix(y_act, y_pred)
+
+    FP = matrix.sum(axis=0) - np.diag(matrix)  
+    FN = matrix.sum(axis=1) - np.diag(matrix)
+    TP = np.diag(matrix).sum()
+    TN = matrix.sum() - (FP + FN + TP)
+
+    # Overall accuracy
+    ACC = (TP)/(matrix.sum())
+    # False positive rate
+    FPR = FP/(FP+TN)
+    # False negative rate
+    FNR = FN/(TP+FN)
+
+    matrix = pd.DataFrame(matrix, columns=list(LABEL.keys()), index=list(LABEL.keys()), dtype='int32')
+    print(matrix, '\n')
+    print("Accuracy: ", ACC)
+    result = pd.DataFrame([FPR, FNR], columns=list(LABEL.keys()),index=['FPR', 'FNR'])
+
+    result['Average'] = result.mean(axis=1)
+    print(result*100, '\n')
+
 
 
 def knnClass(trainFile, testFile):
@@ -224,10 +244,7 @@ def knnClass(trainFile, testFile):
     knn = KNeighborsClassifier(n_neighbors=k)
     knn.fit(X_train, y_train)
     prediction = knn.predict(X_test)
-    #Gathering the accuracy, falspe positives and fals negative percentages.
-    cfMatrix = confusion_matrix(y_test, prediction)
-    #Send them off to print
-    printResults(prediction, cfMatrix)
+    printResults(y_test, prediction)
 
 def smvClassifier(trainFile, testFile):
     with open(trainFile, 'rb') as f:
@@ -248,8 +265,7 @@ def smvClassifier(trainFile, testFile):
     smvC = svm.SVC(kernel='linear', C = 1, gamma= 'auto')
     smvC.fit(X_train, y_train)
     prediction = smvC.predict(X_test)
-    svmMatrix = confusion_matrix(y_test, prediction)
-    printResults(prediction, svmMatrix)
+    printResults(y_test, prediction)
     
 
 
@@ -263,17 +279,20 @@ def main():
     pred = pred.astype(np.int32)
 
     print('KNN using pixel values:')
-    printSummary(test_label, pred)
-
+    printResults(test_label, pred)
     train, train_label, test, test_label = histExtract() 
     pred = nearestNeighbor(train, train_label, test)
     pred = pred.reshape(pred.shape[0],)
     pred = pred.astype(np.int32)
 
     print('KNN using histogram features:')
-    printSummary(test_label, pred)
+    printResults(test_label, pred)
     siftExtract()
+
+    print('KNN using SIFT features')
     knnClass('siftTrain.pickle', 'siftTest.pickle')
+
+    print('SVM using SIFT features')
     smvClassifier('siftTrain.pickle', 'siftTest.pickle')
 
 if __name__ == "__main__":
